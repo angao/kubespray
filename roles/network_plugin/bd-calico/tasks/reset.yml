@@ -8,6 +8,23 @@
   command: ip link del dummy0
   when: dummy0.stat.exists
 
+- name: reset | get remaining routes set by calico vxlan
+  command: ip route show dev vxlan.calico
+  changed_when: false
+  register: vxlan_routes
+  ignore_errors: True
+  when: calico_network_backend == "vxlan"
+
+- name: reset | remove remaining routes set by calico vxlan
+  command: "ip route del {{ vxlan_route }} dev vxlan.calico"
+  ignore_errors: True
+  with_items: "{{ vxlan_routes.stdout_lines }}"
+  loop_control:
+    loop_var: vxlan_route
+  when:
+    - calico_network_backend == "vxlan"
+    - vxlan_routes.stdout_lines | length > 0
+
 - name: reset | check vxlan.calico network device
   stat:
     path: /sys/class/net/vxlan.calico
@@ -31,23 +48,6 @@
 - name: reset | remove pod cidr blackhole
   shell: "ip route | grep '^blackhole' | grep -F -w '{{ kube_pods_subnet }}' | sed -e 's/^blackhole/ip route del/' | sh -x"
   ignore_errors: True
-
-- name: reset | get remaining routes set by vxlan
-  command: ip route show dev vxlan.calico
-  changed_when: false
-  register: vxlan_routes
-  ignore_errors: True
-  when: calico_network_backend == "vxlan"
-
-- name: reset | remove remaining routes set by vxlan
-  command: "ip route del {{ vxlan_route }} dev vxlan.calico"
-  ignore_errors: True
-  with_items: "{{ vxlan_routes.stdout_lines }}"
-  loop_control:
-    loop_var: vxlan_route
-  when:
-    - calico_network_backend == "vxlan"
-    - vxlan_routes.stdout_lines | length > 0
 
 - name: reset | get remaining routes set by bird
   command: ip route show proto bird
